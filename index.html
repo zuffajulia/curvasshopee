@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisador de Curva ABC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .file-input-container {
+            border: 2px dashed #9ca3af;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        /* O estilo de drag-over será aplicado via JS com classes do Tailwind */
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-2xl mx-auto p-6 md:p-8 bg-white rounded-2xl shadow-lg">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Analisador de Curva ABC</h1>
+            <p class="text-gray-500 mt-2">Envie as suas planilhas para gerar a análise completa.</p>
+        </div>
+
+        <div class="space-y-6">
+            <!-- Input Vendas -->
+            <div id="sales-drop-zone" class="file-input-container p-6 rounded-lg text-center cursor-pointer">
+                <input type="file" id="sales-file-input" class="hidden" accept=".csv,.xlsx">
+                <label for="sales-file-input" class="cursor-pointer">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <p class="mt-2 text-sm text-gray-600">
+                        <span class="font-semibold text-[#2f1c46]">Clique para enviar</span> ou arraste e solte
+                    </p>
+                    <p class="text-xs text-gray-500">a planilha de Vendas (Performance do Produto)</p>
+                    <span id="sales-file-name" class="mt-2 block text-sm font-medium text-[#2f1c46]"></span>
+                </label>
+            </div>
+
+            <!-- Input Estoque -->
+            <div id="stock-drop-zone" class="file-input-container p-6 rounded-lg text-center cursor-pointer">
+                <input type="file" id="stock-file-input" class="hidden" accept=".csv,.xlsx">
+                <label for="stock-file-input" class="cursor-pointer">
+                     <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <p class="mt-2 text-sm text-gray-600">
+                        <span class="font-semibold text-[#2f1c46]">Clique para enviar</span> ou arraste e solte
+                    </p>
+                    <p class="text-xs text-gray-500">a planilha de Estoque</p>
+                    <span id="stock-file-name" class="mt-2 block text-sm font-medium text-[#2f1c46]"></span>
+                </label>
+            </div>
+        </div>
+
+        <div class="mt-8">
+            <button id="process-button" class="w-full bg-[#2f1c46] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#462a69] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#462a69] transition duration-150 ease-in-out disabled:bg-gray-400">
+                Processar e Gerar Análise
+            </button>
+        </div>
+
+        <div id="status-area" class="mt-6 text-center"></div>
+        <div id="download-area" class="mt-4 space-y-3 hidden"></div>
+
+    </div>
+
+    <script>
+        // --- Setup de Variáveis e Elementos do DOM ---
+        const salesDropZone = document.getElementById('sales-drop-zone');
+        const stockDropZone = document.getElementById('stock-drop-zone');
+        const salesFileInput = document.getElementById('sales-file-input');
+        const stockFileInput = document.getElementById('stock-file-input');
+        const salesFileName = document.getElementById('sales-file-name');
+        const stockFileName = document.getElementById('stock-file-name');
+        const processButton = document.getElementById('process-button');
+        const statusArea = document.getElementById('status-area');
+        const downloadArea = document.getElementById('download-area');
+
+        let salesFile = null;
+        let stockFile = null;
+
+        // --- Lógica de Arrastar e Soltar (Drag and Drop) ---
+        function setupDragDrop(dropZone, fileInput, fileNameDisplay) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.add('bg-[#2f1c46]/10', 'border-[#2f1c46]'), false));
+            ['dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.remove('bg-[#2f1c46]/10', 'border-[#2f1c46]'), false));
+
+            dropZone.addEventListener('drop', (e) => {
+                fileInput.files = e.dataTransfer.files;
+                updateFileState(fileInput, fileNameDisplay);
+            }, false);
+            
+            fileInput.addEventListener('change', () => updateFileState(fileInput, fileNameDisplay), false);
+        }
+        
+        function updateFileState(input, nameDisplay) {
+            const file = input.files[0];
+            if (input.id.startsWith('sales')) {
+                salesFile = file;
+            } else {
+                stockFile = file;
+            }
+            nameDisplay.textContent = file ? file.name : '';
+        }
+        
+        setupDragDrop(salesDropZone, salesFileInput, salesFileName);
+        setupDragDrop(stockDropZone, stockFileInput, stockFileName);
+
+        processButton.addEventListener('click', handleFileProcessing);
+        
+        function setStatus(message, type = 'info') {
+            const colors = {
+                info: 'text-gray-500',
+                error: 'text-red-500 font-semibold',
+                success: 'text-green-600 font-semibold'
+            };
+            statusArea.innerHTML = `<p class="${colors[type]}">${message}</p>`;
+        }
+
+        function handleFileProcessing() {
+            if (!salesFile || !stockFile) {
+                setStatus('Por favor, envie os dois arquivos para continuar.', 'error');
+                return;
+            }
+
+            setStatus('Lendo arquivos...', 'info');
+            processButton.disabled = true;
+            downloadArea.classList.add('hidden');
+            downloadArea.innerHTML = '';
+
+            const fileReaderPromise = (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => { reader.abort(); reject(new DOMException("Problem parsing input file.")); };
+                reader.onload = () => {
+                    try {
+                        const data = new Uint8Array(reader.result);
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        const sheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[sheetName];
+                        const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+                        resolve(json);
+                    } catch (e) {
+                       // Fallback to CSV if XLSX parsing fails
+                        reader.readAsText(file);
+                        reader.onload = () => {
+                           Papa.parse(reader.result, {
+                                header: true,
+                                skipEmptyLines: true,
+                                complete: (results) => resolve(results.data),
+                                error: (err) => reject(err)
+                           });
+                        }
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            });
+
+            Promise.all([fileReaderPromise(salesFile), fileReaderPromise(stockFile)])
+                .then(([salesData, stockDataRaw]) => {
+                    setStatus('Processando análise... Isso pode levar um momento.', 'info');
+                    setTimeout(() => {
+                       try {
+                            const result = runAnalysis(salesData, stockDataRaw);
+                            if (!result || !result.finalData || result.finalData.length === 0) {
+                                throw new Error("A análise não retornou dados. Verifique os filtros e os arquivos de entrada.");
+                            }
+                            generateExcelFiles(result.finalData, result.stockOutData);
+                            setStatus('Análise concluída com sucesso!', 'success');
+                       } catch(e) {
+                           console.error(e);
+                           setStatus(`Erro durante a análise: ${e.message}`, 'error');
+                       } finally {
+                           processButton.disabled = false;
+                       }
+                    }, 50);
+                })
+                .catch(error => {
+                    setStatus(`Erro ao ler os arquivos: ${error.message}`, 'error');
+                    processButton.disabled = false;
+                });
+        }
+
+        // --- CORE ANALYSIS LOGIC ---
+        function runAnalysis(salesData, stockDataRaw) {
+            // --- Validação e Limpeza do Estoque ---
+            let headerRowIndex = -1;
+            for(let i = 0; i < Math.min(5, stockDataRaw.length); i++) {
+                const rowValues = Object.values(stockDataRaw[i]);
+                if (rowValues.includes('ID do Produto') && rowValues.includes('Estoque')) {
+                    headerRowIndex = i;
+                    break;
+                }
+            }
+             if (headerRowIndex === -1) { // Fallback for english headers
+                 for(let i = 0; i < Math.min(5, stockDataRaw.length); i++) {
+                    const rowValues = Object.values(stockDataRaw[i]);
+                    if (rowValues.includes('Product ID') && rowValues.includes('Stock')) {
+                        headerRowIndex = i;
+                        break;
+                    }
+                }
+             }
+            if (headerRowIndex === -1) throw new Error("Cabeçalho não encontrado na planilha de estoque. Verifique as colunas 'ID do Produto' e 'Estoque'.");
+            
+            let stockHeader = stockDataRaw[headerRowIndex];
+            // Remap header to handle cases where keys might be different from values
+            const headerMap = Object.fromEntries(Object.entries(stockHeader).map(([key, val]) => [val || key, key]));
+            let stockData = stockDataRaw.slice(headerRowIndex + 1);
+
+            const stockColsToKeep = { 'ID do Produto': 'stock_product_id', 'Variante Identificador': 'stock_variation_id', 'Estoque': 'Estoque' };
+            
+            let df_stock = stockData.map(row => {
+                let newRow = {};
+                for (const [key, val] of Object.entries(stockColsToKeep)) {
+                    if(headerMap[key]) newRow[val] = row[headerMap[key]];
+                }
+                return newRow;
+            }).filter(row => Object.keys(row).length > 0);
+
+            df_stock = df_stock.map(row => {
+                row.stock_product_id = parseFloat(row.stock_product_id) || null;
+                row.stock_variation_id = parseFloat(row.stock_variation_id) || null;
+                row.Estoque = parseFloat(row.Estoque) || 0;
+                return row;
+            }).filter(row => row.stock_product_id || row.stock_variation_id);
+
+            // --- Validação e Tratamento das Vendas ---
+            const requiredSalesCols = ['ID do Item', 'Produto', 'ID da Variação', 'Nome da Variação', 'Unidades (Pedido pago)', 'Vendas (Pedido pago) (BRL)'];
+            const salesHeaders = Object.keys(salesData[0] || {});
+            const missingSalesCols = requiredSalesCols.filter(col => !salesHeaders.includes(col));
+            if (missingSalesCols.length > 0) throw new Error(`A planilha de vendas não contém as colunas obrigatórias: ${missingSalesCols.join(', ')}`);
+            
+            let df_processed = salesData;
+
+            const originalIdCounts = df_processed.reduce((acc, row) => {
+                const id = row['ID do Item'];
+                if (id) acc[id] = (acc[id] || 0) + 1;
+                return acc;
+            }, {});
+            df_processed.forEach(row => row.original_id_count = originalIdCounts[row['ID do Item']]);
+
+            df_processed.forEach(row => {
+                row['Unidades (Pedido pago)'] = parseFloat(row['Unidades (Pedido pago)']) || 0;
+                const salesValue = String(row['Vendas (Pedido pago) (BRL)'] || '0').replace(/\./g, '').replace(',', '.');
+                row['Vendas (Pedido pago) (BRL)'] = parseFloat(salesValue) || 0;
+                row['ID da Variação'] = String(row['ID da Variação'] || '').trim();
+            });
+            
+            df_processed = df_processed.filter(row => row['Vendas (Pedido pago) (BRL)'] > 0);
+            const isDashVariation = row => row['ID da Variação'] === '-';
+            const isDuplicatedIdInOriginal = row => row.original_id_count > 1;
+            df_processed = df_processed.filter(row => !(isDashVariation(row) && isDuplicatedIdInOriginal(row)));
+
+            // --- Cálculo das Curvas ---
+            df_processed.sort((a, b) => b['Unidades (Pedido pago)'] - a['Unidades (Pedido pago)']);
+            let somaUnidades = df_processed.reduce((sum, row) => sum + row['Unidades (Pedido pago)'], 0);
+            let acumuladoUn = 0;
+            df_processed.forEach(row => {
+                acumuladoUn += row['Unidades (Pedido pago)'];
+                row['Curva % Un'] = somaUnidades > 0 ? acumuladoUn / somaUnidades : 0;
+                if (row['Curva % Un'] <= 0.80) row['Curva por Unidade'] = 'A';
+                else if (row['Curva % Un'] <= 0.95) row['Curva por Unidade'] = 'B';
+                else row['Curva por Unidade'] = 'C';
+            });
+            
+            df_processed.sort((a, b) => b['Vendas (Pedido pago) (BRL)'] - a['Vendas (Pedido pago) (BRL)']);
+            let somaValor = df_processed.reduce((sum, row) => sum + row['Vendas (Pedido pago) (BRL)'], 0);
+            let acumuladoValor = 0;
+            df_processed.forEach(row => {
+                acumuladoValor += row['Vendas (Pedido pago) (BRL)'];
+                row['Curva % Valor'] = somaValor > 0 ? acumuladoValor / somaValor : 0;
+                 if (row['Curva % Valor'] <= 0.80) row['Curva por Faturamento'] = 'A';
+                else if (row['Curva % Valor'] <= 0.95) row['Curva por Faturamento'] = 'B';
+                else row['Curva por Faturamento'] = 'C';
+            });
+
+            // --- Inserir Estoque ---
+            const stockMapByVariation = new Map(df_stock.map(item => [item.stock_variation_id, item.Estoque]));
+            const stockMapByProduct = new Map(df_stock.map(item => [item.stock_product_id, item.Estoque]));
+            df_processed.forEach(row => {
+                const variationId = parseFloat(row['ID da Variação']);
+                const productId = parseFloat(row['ID do Item']);
+                let stock;
+                if (!isNaN(variationId) && row['ID da Variação'] !== '-') {
+                    stock = stockMapByVariation.get(variationId);
+                } else {
+                    stock = stockMapByProduct.get(productId);
+                     if (stock === undefined) stock = stockMapByVariation.get(productId);
+                }
+                row['Estoque'] = stock !== undefined ? stock : 0;
+            });
+            
+            // --- Formatação Final ---
+             df_processed.forEach(row => {
+                 row['Tkt Médio'] = row['Unidades (Pedido pago)'] > 0 ? row['Vendas (Pedido pago) (BRL)'] / row['Unidades (Pedido pago)'] : 0;
+            });
+
+            const finalData = df_processed.map(row => ({
+                'ID': row['ID do Item'], 'Produto': row['Produto'], 'Variação': row['Nome da Variação'],
+                'Curva por Unidade': row['Curva por Unidade'], 'Curva por Faturamento': row['Curva por Faturamento'],
+                'Estoque': row['Estoque'], 'Vendas R$': row['Vendas (Pedido pago) (BRL)'], 'Tkt Médio': row['Tkt Médio'],
+            }));
+
+            // --- Estoque Zerado ---
+            const stockOutData = finalData.filter(row => 
+                (row['Curva por Unidade'] === 'A' || row['Curva por Faturamento'] === 'A') &&
+                row['Estoque'] === 0 && row['Variação'] !== '-'
+            ).map(row => ({
+                'Código': row.ID, 'Nome do produto': row.Produto, 'Variação': row.Variação
+            }));
+            
+            return { finalData, stockOutData };
+        }
+
+        function generateExcelFiles(finalData, stockOutData) {
+            const wb = XLSX.utils.book_new();
+            const ws1 = XLSX.utils.json_to_sheet(finalData);
+            XLSX.utils.book_append_sheet(wb, ws1, "Resultado_Final");
+            const ws2 = XLSX.utils.json_to_sheet(stockOutData);
+            XLSX.utils.book_append_sheet(wb, ws2, "EstoqueZerado_Curva_A");
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'Analise_ABC_Completa.xlsx';
+            link.className = 'block w-full text-center bg-[#2f1c46] text-white font-bold py-3 px-4 rounded-lg hover:bg-[#462a69] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#462a69] transition duration-150 ease-in-out';
+            link.textContent = 'Baixar Planilha de Análise';
+            downloadArea.innerHTML = '';
+            downloadArea.appendChild(link);
+            downloadArea.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
