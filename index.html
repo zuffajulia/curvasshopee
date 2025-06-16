@@ -27,7 +27,6 @@
         </div>
 
         <div class="space-y-6">
-            <!-- Input Vendas -->
             <div id="sales-drop-zone" class="file-input-container p-6 rounded-lg text-center cursor-pointer">
                 <input type="file" id="sales-file-input" class="hidden" accept=".csv,.xlsx">
                 <label for="sales-file-input" class="cursor-pointer">
@@ -42,7 +41,6 @@
                 </label>
             </div>
 
-            <!-- Input Estoque -->
             <div id="stock-drop-zone" class="file-input-container p-6 rounded-lg text-center cursor-pointer">
                 <input type="file" id="stock-file-input" class="hidden" accept=".csv,.xlsx">
                 <label for="stock-file-input" class="cursor-pointer">
@@ -156,12 +154,12 @@
                        // Fallback to CSV if XLSX parsing fails
                         reader.readAsText(file);
                         reader.onload = () => {
-                           Papa.parse(reader.result, {
+                            Papa.parse(reader.result, {
                                 header: true,
                                 skipEmptyLines: true,
                                 complete: (results) => resolve(results.data),
                                 error: (err) => reject(err)
-                           });
+                            });
                         }
                     }
                 };
@@ -211,7 +209,7 @@
                         headerRowIndex = i;
                         break;
                     }
-                }
+                 }
              }
             if (headerRowIndex === -1) throw new Error("Cabeçalho não encontrado na planilha de estoque. Verifique as colunas 'ID do Produto' e 'Estoque'.");
             
@@ -314,12 +312,14 @@
                 'Estoque': row['Estoque'], 'Vendas R$': row['Vendas (Pedido pago) (BRL)'], 'Tkt Médio': row['Tkt Médio'],
             }));
 
-            // --- Estoque Zerado ---
+            // --- Estoque Zerado (LÓGICA CORRIGIDA) ---
             const stockOutData = finalData.filter(row => 
                 (row['Curva por Unidade'] === 'A' || row['Curva por Faturamento'] === 'A') &&
-                row['Estoque'] === 0 && row['Variação'] !== '-'
+                row['Estoque'] <= 0
             ).map(row => ({
-                'Código': row.ID, 'Nome do produto': row.Produto, 'Variação': row.Variação
+                'Código': row.ID, 
+                'Nome do produto': row.Produto, 
+                'Variação': row.Variação === '-' ? 'N/A' : row.Variação
             }));
             
             return { finalData, stockOutData };
