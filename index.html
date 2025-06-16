@@ -27,6 +27,7 @@
         </div>
 
         <div class="space-y-6">
+            <!-- Input Vendas -->
             <div id="sales-drop-zone" class="file-input-container p-6 rounded-lg text-center cursor-pointer">
                 <input type="file" id="sales-file-input" class="hidden" accept=".csv,.xlsx">
                 <label for="sales-file-input" class="cursor-pointer">
@@ -41,6 +42,7 @@
                 </label>
             </div>
 
+            <!-- Input Estoque -->
             <div id="stock-drop-zone" class="file-input-container p-6 rounded-lg text-center cursor-pointer">
                 <input type="file" id="stock-file-input" class="hidden" accept=".csv,.xlsx">
                 <label for="stock-file-input" class="cursor-pointer">
@@ -214,7 +216,6 @@
             if (headerRowIndex === -1) throw new Error("Cabeçalho não encontrado na planilha de estoque. Verifique as colunas 'ID do Produto' e 'Estoque'.");
             
             let stockHeader = stockDataRaw[headerRowIndex];
-            // Remap header to handle cases where keys might be different from values
             const headerMap = Object.fromEntries(Object.entries(stockHeader).map(([key, val]) => [val || key, key]));
             let stockData = stockDataRaw.slice(headerRowIndex + 1);
 
@@ -307,12 +308,18 @@
             });
 
             const finalData = df_processed.map(row => ({
-                'ID': row['ID do Item'], 'Produto': row['Produto'], 'Variação': row['Nome da Variação'],
-                'Curva por Unidade': row['Curva por Unidade'], 'Curva por Faturamento': row['Curva por Faturamento'],
-                'Estoque': row['Estoque'], 'Vendas R$': row['Vendas (Pedido pago) (BRL)'], 'Tkt Médio': row['Tkt Médio'],
+                'ID': row['ID do Item'],
+                'Produto': row['Produto'],
+                'Variação': row['Nome da Variação'],
+                'Curva por Unidade': row['Curva por Unidade'],
+                'Curva por Faturamento': row['Curva por Faturamento'],
+                'Unidades Vendidas': row['Unidades (Pedido pago)'], 
+                'Estoque': row['Estoque'],
+                'Vendas R$': row['Vendas (Pedido pago) (BRL)'],
+                'Tkt Médio': row['Tkt Médio'],
             }));
 
-            // --- Estoque Zerado (LÓGICA CORRIGIDA) ---
+            // --- Estoque Zerado ---
             const stockOutData = finalData.filter(row => 
                 (row['Curva por Unidade'] === 'A' || row['Curva por Faturamento'] === 'A') &&
                 row['Estoque'] <= 0
@@ -329,8 +336,12 @@
             const wb = XLSX.utils.book_new();
             const ws1 = XLSX.utils.json_to_sheet(finalData);
             XLSX.utils.book_append_sheet(wb, ws1, "Resultado_Final");
-            const ws2 = XLSX.utils.json_to_sheet(stockOutData);
-            XLSX.utils.book_append_sheet(wb, ws2, "EstoqueZerado_Curva_A");
+            
+            if (stockOutData && stockOutData.length > 0) {
+                const ws2 = XLSX.utils.json_to_sheet(stockOutData);
+                XLSX.utils.book_append_sheet(wb, ws2, "EstoqueZerado_Curva_A");
+            }
+            
             const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
             const blob = new Blob([wbout], { type: 'application/octet-stream' });
             const url = URL.createObjectURL(blob);
